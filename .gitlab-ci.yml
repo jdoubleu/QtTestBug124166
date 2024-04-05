@@ -1,0 +1,94 @@
+stages:
+  - build
+  - test
+
+windows:build:
+  stage: build
+  tags:
+    - msvc
+    - cmake
+    - vcpkg
+  cache:
+    - key: "build-${CI_COMMIT_REF_SLUG}-${CI_CONCURRENT_ID}"
+      paths:
+        - build/
+  before_script:
+    - vcpkg install qtbase:x64-windows qtgrpc:x64-windows protobuf:x64-windows
+    - cmake -B build -G "Visual Studio 17 2022" -A "x64" 
+        -DCMAKE_TOOLCHAIN_FILE="${ENV:VCPKG_ROOT}\scripts\buildsystems\vcpkg.cmake"
+        -DCMAKE_INSTALL_PREFIX=dist/
+  script:
+    - cmake --build build/ --config Release --parallel
+    - cmake --install build/
+  artifacts: 
+    expire_in: 1 day
+    paths:
+      - dist/
+      
+windows:run-tests:
+  stage: test
+  tags:
+    - windows
+  dependencies:
+    - windows:build
+  needs:
+    - windows:build
+  script:
+    - .\dist\bin\Tests.exe -v2
+
+windows:run-tests-with-env:
+  stage: test
+  tags:
+    - windows
+  dependencies:
+    - windows:build
+  needs:
+    - windows:build
+  variables:
+    QT_LOGGING_TO_CONSOLE: 1
+  script:
+    - .\dist\bin\Tests.exe -v2
+        
+linux:build:
+  stage: build
+  image: stateoftheartio/qt6:6.6-gcc-aqt
+  cache:
+    - key: "build-${CI_COMMIT_REF_SLUG}-${CI_CONCURRENT_ID}"
+      paths:
+        - build/
+  before_script:
+    - apt update -qq && apt install -y -qq --no-install-recommends qt6-base-dev build-essential cmake
+    - cmake -B build -DCMAKE_INSTALL_PREFIX=dist/
+  script:
+    - cmake --build build/ --config Release --parallel
+    - cmake --install build/
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - dist/
+
+linux:run-tests:
+  stage: test
+  image: debian:bookworm-slim
+  dependencies:
+    - linux:build
+  needs:
+    - linux:build
+  before_script: 
+    - apt update -q && apt install -y -qq --no-install-recommends qt6-base-dev
+  script:
+    - dist/bin/Tests -v2
+
+linux:run-tests-with-env:
+  stage: test
+  image: debian:bookworm-slim
+  dependencies:
+    - linux:build
+  needs:
+    - linux:build
+  variables:
+    QT_LOGGING_TO_CONSOLE: 1
+  before_script: 
+    - apt update -q && apt install -y -qq --no-install-recommends qt6-base-dev
+  script:
+    - dist/bin/Tests -v2
